@@ -1,5 +1,3 @@
-// /api/subtitle.js
-
 const axios = require('axios');
 const cheerio = require('cheerio');
 
@@ -7,20 +5,9 @@ const BASE_URL = 'https://yifysubtitles.ch';
 const TMDB_API_KEY = '1e2d76e7c45818ed61645cb647981e5c';
 
 const popularLanguages = [
-  'English',
-  'Spanish',
-  'French',
-  'Portuguese',
-  'Arabic',
-  'German',
-  'Hindi',
-  'Italian',
-  'Russian',
-  'Turkish',
-  'Indonesian',
-  'Chinese',
-  'Japanese',
-  'Korean',
+  'English', 'Spanish', 'French', 'Portuguese', 'Arabic',
+  'German', 'Hindi', 'Italian', 'Russian', 'Turkish',
+  'Indonesian', 'Chinese', 'Japanese', 'Korean',
 ];
 
 async function getImdbIdFromTmdb(tmdbId) {
@@ -55,6 +42,7 @@ async function getSubtitlesFromImdb(imdbId) {
       if (!popularLanguages.includes(language)) continue;
 
       const detailLink = `${BASE_URL}${linkRel}`;
+
       try {
         const { data: detailHtml } = await axios.get(detailLink);
         const $detail = cheerio.load(detailHtml);
@@ -66,11 +54,11 @@ async function getSubtitlesFromImdb(imdbId) {
           seenLanguages.add(language);
         }
       } catch (err) {
-        console.error(`❌ Failed to fetch subtitle detail page: ${detailLink}`);
+        console.error(`❌ Failed detail fetch: ${detailLink}`);
       }
     }
 
-    // Ensure English is included
+    // Ensure English exists
     if (!seenLanguages.has('English')) {
       const englishRow = subtitleRows.filter((_, el) =>
         $(el).find('td:nth-child(2)').text().trim() === 'English'
@@ -86,7 +74,10 @@ async function getSubtitlesFromImdb(imdbId) {
           const downloadLink = downloadPath ? `${BASE_URL}${downloadPath}` : null;
 
           if (downloadLink) {
-            subtitles.unshift({ language: 'English', download: downloadLink });
+            subtitles.unshift({
+              language: 'English',
+              download: downloadLink,
+            });
             seenLanguages.add('English');
           }
         }
@@ -100,16 +91,11 @@ async function getSubtitlesFromImdb(imdbId) {
   }
 }
 
+// 🔁 Export handler function for Vercel
 module.exports = async (req, res) => {
-  if (req.method !== 'GET') {
-    res.status(405).json({ error: 'Method not allowed' });
-    return;
-  }
+  const { tmdbId } = req.query;
 
-  const urlParts = req.url.split('/');
-  const tmdbId = urlParts[urlParts.length - 1];
-
-  if (!tmdbId || isNaN(tmdbId)) {
+  if (!tmdbId) {
     return res.status(400).json({ error: 'Invalid or missing TMDb ID' });
   }
 
