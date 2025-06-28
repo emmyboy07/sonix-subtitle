@@ -1,9 +1,8 @@
-const express = require('express');
+// /api/subtitle.js
+
 const axios = require('axios');
 const cheerio = require('cheerio');
 
-const app = express();
-const PORT = 3000;
 const BASE_URL = 'https://yifysubtitles.ch';
 const TMDB_API_KEY = '1e2d76e7c45818ed61645cb647981e5c';
 
@@ -24,7 +23,6 @@ const popularLanguages = [
   'Korean',
 ];
 
-// Get IMDb ID from TMDb ID
 async function getImdbIdFromTmdb(tmdbId) {
   try {
     const url = `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${TMDB_API_KEY}`;
@@ -36,7 +34,6 @@ async function getImdbIdFromTmdb(tmdbId) {
   }
 }
 
-// Get subtitles with popular languages only (English compulsory)
 async function getSubtitlesFromImdb(imdbId) {
   const movieUrl = `${BASE_URL}/movie-imdb/${imdbId}`;
   const subtitles = [];
@@ -45,7 +42,6 @@ async function getSubtitlesFromImdb(imdbId) {
   try {
     const { data: movieHtml } = await axios.get(movieUrl);
     const $ = cheerio.load(movieHtml);
-
     const subtitleRows = $('table tbody tr');
 
     for (let i = 0; i < subtitleRows.length; i++) {
@@ -55,12 +51,10 @@ async function getSubtitlesFromImdb(imdbId) {
       const language = row.find('td:nth-child(2)').text().trim();
       const linkRel = row.find('td:nth-child(3) a').attr('href');
 
-      // Skip if not in popularLanguages or already seen
       if (!linkRel || seenLanguages.has(language)) continue;
       if (!popularLanguages.includes(language)) continue;
 
       const detailLink = `${BASE_URL}${linkRel}`;
-
       try {
         const { data: detailHtml } = await axios.get(detailLink);
         const $detail = cheerio.load(detailHtml);
@@ -68,10 +62,7 @@ async function getSubtitlesFromImdb(imdbId) {
         const downloadLink = downloadPath ? `${BASE_URL}${downloadPath}` : null;
 
         if (downloadLink) {
-          subtitles.push({
-            language,
-            download: downloadLink,
-          });
+          subtitles.push({ language, download: downloadLink });
           seenLanguages.add(language);
         }
       } catch (err) {
@@ -79,7 +70,7 @@ async function getSubtitlesFromImdb(imdbId) {
       }
     }
 
-    // ✅ Ensure English is always included (try to fetch if not found)
+    // Ensure English is included
     if (!seenLanguages.has('English')) {
       const englishRow = subtitleRows.filter((_, el) =>
         $(el).find('td:nth-child(2)').text().trim() === 'English'
@@ -95,40 +86,44 @@ async function getSubtitlesFromImdb(imdbId) {
           const downloadLink = downloadPath ? `${BASE_URL}${downloadPath}` : null;
 
           if (downloadLink) {
-            subtitles.unshift({
-              language: 'English',
-              download: downloadLink,
-            });
+            subtitles.unshift({ language: 'English', download: downloadLink });
             seenLanguages.add('English');
           }
         }
       }
     }
 
-    return subtitles.slice(0, 8); // limit to 8
+    return subtitles.slice(0, 8);
   } catch (err) {
     console.error('❌ Subtitle page fetch error:', err.message);
     return [];
   }
 }
 
-// API endpoint: /subtitles/tmdb/:tmdbId
-app.get('/subtitles/tmdb/:tmdbId', async (req, res) => {
-  const { tmdbId } = req.params;
+module.exports = async (req, res) => {
+  if (req.method !== 'GET') {
+    res.status(405).json({ error: 'Method not allowed' });
+    return;
+  }
+
+  const urlParts = req.url.split('/');
+  const tmdbId = urlParts[urlParts.length - 1];
+
+  if (!tmdbId || isNaN(tmdbId)) {
+    return res.status(400).json({ error: 'Invalid or missing TMDb ID' });
+  }
 
   const imdbId = await getImdbIdFromTmdb(tmdbId);
-  if (!imdbId) return res.status(404).json({ error: 'IMDb ID not found for this TMDb ID' });
+  if (!imdbId) {
+    return res.status(404).json({ error: 'IMDb ID not found for this TMDb ID' });
+  }
 
   const subtitles = await getSubtitlesFromImdb(imdbId);
 
-  res.json({
+  res.status(200).json({
     tmdbId,
     imdbId,
     subtitleCount: subtitles.length,
     subtitles,
   });
-});
-
-app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
-});
+};
